@@ -115,7 +115,7 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
     
     checker = SubscriptionChecker(bot)
     
-    # Проверяем подписку на глобальный канал
+    '''' Проверяем подписку на глобальный канал
     if GLOBAL_CHANNEL:
         logger.info(f"Проверка глобального канала {GLOBAL_CHANNEL} для user_id={user_id}")
         
@@ -138,7 +138,7 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
             )
             return
         else:
-            logger.info(f"✅ Пользователь подписан на глобальный канал")
+            logger.info(f"✅ Пользователь подписан на глобальный канал") ''''
     
     # Проверяем подписки на каналы разместителя
     channels = json.loads(post['channels']) if post['channels'] else []
@@ -441,57 +441,57 @@ async def buy_subscription_callback(callback: CallbackQuery):
     await callback.answer()
 
 
-#@router.callback_query(F.data.startswith("tariff_"))
-#async def process_tariff(callback: CallbackQuery):
-    #"""Обработка выбора тарифа"""
-    #tariff = callback.data.split("_")[1]
+"""@router.callback_query(F.data.startswith("tariff_"))
+async def process_tariff(callback: CallbackQuery):
+    """Обработка выбора тарифа"""
+    tariff = callback.data.split("_")[1]
     
-    #if tariff not in TARIFFS:
-        #await callback.answer("❌ Тариф не найден")
-        #return
+    if tariff not in TARIFFS:
+        await callback.answer("❌ Тариф не найден")
+        return
     
-    #price = TARIFFS[tariff]["price"]
-    #credits = TARIFFS[tariff]["credits"]
+    price = TARIFFS[tariff]["price"]
+    credits = TARIFFS[tariff]["credits"]
     
     # Создаем запись о платеже
-    #payment_id = await db.create_payment(
-        #user_id=callback.from_user.id,
-        #amount=price,
-        #credits=credits
-    #)
+    payment_id = await db.create_payment(
+        user_id=callback.from_user.id,
+        amount=price,
+        credits=credits
+    )
     
-    # Начисляем кредиты
-    #await db.add_credits(callback.from_user.id, credits)
-    #await db.update_payment_status(payment_id, "completed")
+     Начисляем кредиты
+    await db.add_credits(callback.from_user.id, credits)
+    await db.update_payment_status(payment_id, "completed")
     
     # Автоматически назначаем роль разместителя
-    #user = await db.get_user(callback.from_user.id)
-    #if user['role'] == 'user':
-        #await db.update_user_role(callback.from_user.id, 'publisher')
+    user = await db.get_user(callback.from_user.id)
+    if user['role'] == 'user':
+        await db.update_user_role(callback.from_user.id, 'publisher')
     
     # Обновляем сообщение
-    #await callback.message.edit_text(
-        #f"✅ Оплата принята!\n\n"
-        #f"💎 Начислено: {credits} кредитов\n"
-        #f"💰 Сумма: {price} руб\n"
-        #f"📦 Тариф: {tariff.capitalize()}\n"
-        #f"🎭 Новая роль: Разместитель\n\n"
-        #f"🆔 ID платежа: {payment_id}\n\n"
-        #f"💡 Теперь вы можете создавать посты командой /create_post"
-    #)
+    await callback.message.edit_text(
+        f"✅ Оплата принята!\n\n"
+        f"💎 Начислено: {credits} кредитов\n"
+        f"💰 Сумма: {price} руб\n"
+        f"📦 Тариф: {tariff.capitalize()}\n"
+        f"🎭 Новая роль: Разместитель\n\n"
+        f"🆔 ID платежа: {payment_id}\n\n"
+        f"💡 Теперь вы можете создавать посты командой /create_post"
+    )
     
-    # Показываем кнопку для создания поста
-    #keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        #[InlineKeyboardButton(text="📝 Создать пост", callback_data="create_post_now")],
-        #[InlineKeyboardButton(text="💰 Еще кредитов", callback_data="buy_subscription")]
-    #])
+     Показываем кнопку для создания поста
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Создать пост", callback_data="create_post_now")],
+        [InlineKeyboardButton(text="💰 Еще кредитов", callback_data="buy_subscription")]
+    ])
     
-    #await callback.message.answer(
-        #"🎉 Готово! Что дальше?",
-        #reply_markup=keyboard
-    #)
+    await callback.message.answer(
+        "🎉 Готово! Что дальше?",
+        reply_markup=keyboard
+    )
     
-    #await callback.answer()
+    await callback.answer()"""
 
 
 @router.callback_query(F.data == "my_profile")
@@ -810,12 +810,20 @@ async def subscribe_command(message: Message):
     
     await message.answer(
         "💰 Выберите тариф подписки:\n\n"
-        "🟢 Базовая - 100 руб (10 кредитов)\n"
-        "🔵 Стандартная - 250 руб (30 кредитов)\n"
-        "🟣 Премиум - 500 руб (70 кредитов)\n\n"
-        "💎 Кредиты используются для создания постов.\n"
-        "1 кредит = 1 канал в посте.\n\n"
-        "💡 При покупке подписки вы автоматически становитесь разместителем!",
+        "🟢 Базовая - 100 руб\n"
+        "• 10 кредитов\n"
+        "• Создание до 10 постов\n\n"
+        "🔵 Стандартная - 250 руб\n"
+        "• 30 кредитов\n"
+        "• Создание до 30 постов\n"
+        "• Приоритетная поддержка\n\n"
+        "🟣 Премиум - 500 руб\n"
+        "• 70 кредитов\n"
+        "• Создание до 70 постов\n"
+        "• VIP поддержка\n"
+        "• Статистика по постам\n\n"
+        "💎 1 кредит = 1 канал в посте\n\n\n"
+        "В данный момент пополнение кредитов осуществляется через владельца @SMEPTHbIE",
         reply_markup=keyboard
     )
 

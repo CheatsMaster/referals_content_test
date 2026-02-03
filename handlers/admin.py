@@ -13,8 +13,6 @@ from subscription_checker import SubscriptionChecker
 
 from config import ADMIN_IDS
 
-import os
-
 router = Router()
 logger = logging.getLogger(__name__)
 
@@ -42,7 +40,7 @@ async def admin_panel(message: Message):
         [InlineKeyboardButton(text="💰 Добавить кредиты", callback_data="admin_add_credits")],
         [InlineKeyboardButton(text="👤 Назначить разместителя", callback_data="admin_make_publisher")],
         [InlineKeyboardButton(text="📝 Управление постами", callback_data="admin_manage_posts")],
-        [InlineKeyboardButton(text="🔍 Проверять каналы", callback_data="admin_check_channels")],
+        [InlineKeyboardButton(text="🔍 Проверить каналы", callback_data="admin_check_channels")],
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_list_users")],
     ])
     
@@ -64,10 +62,10 @@ async def admin_stats(callback: CallbackQuery):
     
     # Получаем дополнительную статистику
     async with aiosqlite.connect("bot_database.db") as db_conn:
-        async with db_conn.execute("SELECT COUNT() FROM users WHERE role = 'publisher'") as cursor:
+        async with db_conn.execute("SELECT COUNT(*) FROM users WHERE role = 'publisher'") as cursor:
             publishers = (await cursor.fetchone())[0]
         
-        async with db_conn.execute("SELECT COUNT() FROM payments WHERE status = 'completed'") as cursor:
+        async with db_conn.execute("SELECT COUNT(*) FROM payments WHERE status = 'completed'") as cursor:
             payments = (await cursor.fetchone())[0]
         
         async with db_conn.execute("SELECT SUM(amount) FROM payments WHERE status = 'completed'") as cursor:
@@ -251,11 +249,19 @@ async def admin_manage_posts(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin")]
     ])
     
-    await callback.message.edit_text(
-        "📝 Управление постами\n\n"
-        "Выберите действие:",
-        reply_markup=keyboard
-    )
+    # Используем answer вместо edit_text, так как это может быть новое сообщение
+    if callback.message.text:
+        await callback.message.edit_text(
+            "📝 Управление постами\n\n"
+            "Выберите действие:",
+            reply_markup=keyboard
+        )
+    else:
+        await callback.message.answer(
+            "📝 Управление постами\n\n"
+            "Выберите действие:",
+            reply_markup=keyboard
+        )
     await callback.answer()
 
 
@@ -266,25 +272,23 @@ async def admin_all_posts(callback: CallbackQuery):
         await callback.answer("❌ Нет прав")
         return
     
-    # Получаем все посты
-    async with aiosqlite.connect("bot_database.db") as db_conn:
-        db_conn.row_factory = aiosqlite.Row
-        async with db_conn.execute(
-            """SELECT p., u.username, u.user_id as publisher_user_id 
-               FROM posts p 
-               LEFT JOIN users u ON p.publisher_id = u.user_id 
-               ORDER BY p.created_at DESC LIMIT 20"""
-        ) as cursor:
-            posts = await cursor.fetchall()
+    # Получаем все посты через существующую функцию из database.py
+    posts = await db.get_all_posts()
     
     if not posts:
         await callback.message.answer("📭 Постов пока нет")
         await callback.answer()
         return
     
-    for post in posts:
+    # Ограничиваем количество для первого сообщения
+    posts_to_show = posts[:10]
+    
+    for idx, post in enumerate(posts_to_show):
         status = "🟢 Активен" if post['is_active'] else "🔴 Заблокирован"
         channels = json.loads(post['channels']) if post['channels'] else []
+        
+        # Используем username из результата запроса
+        username = post.get('username', 'неизвестен')
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -294,14 +298,14 @@ async def admin_all_posts(callback: CallbackQuery):
                 )
             ],
             [
-                InlineKeyboardButton(text="👤 Автор", callback_data=f"view_user_{post['publisher_user_id']}"),
+                InlineKeyboardButton(text="👤 Автор", callback_data=f"view_user_{post['publisher_id']}"),
                 InlineKeyboardButton(text="📊 Статистика", callback_data=f"post_stats_{post['id']}")
             ]
         ])
         
         message_text = (
             f"📝 Пост #{post['id']}\n\n"
-            f"👤 Автор: @{post['username'] or 'неизвестен'}\n"
+            f"👤 Автор: @{username}\n"
             f"🔗 Код: {post['unique_code']}\n"
             f"👀 Просмотров: {post['views']}\n"
             f"📊 Статус: {status}\n"
@@ -316,6 +320,10 @@ async def admin_all_posts(callback: CallbackQuery):
         
         await callback.message.answer(message_text, reply_markup=keyboard)
     
+    # Если постов больше 10, показываем информацию о количестве
+    if len(posts) > 10:
+        await callback.message.answer(f"📊 Показано 10 из {len(posts)} постов. Для просмотра остальных используйте поиск.")
+    
     await callback.answer()
 
 
@@ -326,15 +334,19 @@ async def toggle_post_status(callback: CallbackQuery):
         await callback.answer("❌ Нет прав")
         return
     
-    post_id = int(callback.data.split("_")[2])
-    
-    new_status = await db.toggle_post_status(post_id)
-    status_text = "заблокирован" if not new_status else "разблокирован"
-    
-    await callback.answer(f"✅ Пост {status_text}")
-    
-    # Обновляем сообщение
-    await admin_all_posts(callback)
+    try:
+        post_id = int(callback.data.split("_")[2])
+        
+        new_status = await db.toggle_post_status(post_id)
+        status_text = "заблокирован" if not new_status else "разблокирован"
+        
+        await callback.answer(f"✅ Пост {status_text}")
+        
+        # Обновляем сообщение - отправляем новый список постов
+        await admin_all_posts(callback)
+    except Exception as e:
+        logger.error(f"Ошибка при переключении статуса поста: {e}")
+        await callback.answer("❌ Ошибка при обновлении статуса")
 
 
 @router.callback_query(F.data == "admin_check_channels")
@@ -363,7 +375,7 @@ async def admin_check_channels(callback: CallbackQuery):
         await callback.answer()
         return
     
-    checker = SubscriptionChecker(callback.message.bot)
+    checker = SubscriptionChecker(callback.bot)
     
     await callback.message.answer(f"🔍 Проверяем {len(all_channels)} каналов...")
     
@@ -372,15 +384,18 @@ async def admin_check_channels(callback: CallbackQuery):
     
     # Проверяем каналы по очереди
     for idx, channel in enumerate(all_channels):
-        is_valid, error_msg = await checker.check_bot_admin_rights(channel)
-        
-        if is_valid:
-            valid_channels.append(channel)
-        else:
-            invalid_channels.append((channel, error_msg))
+        try:
+            is_valid, error_msg = await checker.check_bot_admin_rights(channel)
+            
+            if is_valid:
+                valid_channels.append(channel)
+            else:
+                invalid_channels.append((channel, error_msg))
+        except Exception as e:
+            invalid_channels.append((channel, f"Ошибка проверки: {str(e)[:50]}"))
         
         # Отправляем промежуточный отчет каждые 5 каналов
-        if (idx + 1) % 5 == 0:
+        if (idx + 1) % 5 == 0 or (idx + 1) == len(all_channels):
             await callback.message.answer(f"🔍 Проверено {idx + 1}/{len(all_channels)} каналов...")
     
     # Формируем финальный отчет
@@ -417,13 +432,8 @@ async def admin_list_users(callback: CallbackQuery):
         await callback.answer("❌ Нет прав")
         return
     
-    # Получаем всех пользователей
-    async with aiosqlite.connect("bot_database.db") as db_conn:
-        db_conn.row_factory = aiosqlite.Row
-        async with db_conn.execute(
-            """SELECT  FROM users ORDER BY created_at DESC LIMIT 50"""
-        ) as cursor:
-            users = await cursor.fetchall()
+    # Получаем всех пользователей через существующую функцию
+    users = await db.get_all_users()
     
     if not users:
         await callback.message.answer("📭 Пользователей пока нет")
@@ -440,7 +450,8 @@ async def admin_list_users(callback: CallbackQuery):
     if admins:
         response += "👑 Администраторы:\n"
         for admin in admins[:5]:
-            response += f"• @{admin['username'] or 'без username'} (ID: {admin['user_id']}) - {admin['credits']} кредитов\n"
+            username = admin.get('username', 'без username')
+            response += f"• @{username} (ID: {admin['user_id']}) - {admin['credits']} кредитов\n"
         if len(admins) > 5:
             response += f"... и еще {len(admins) - 5}\n"
         response += "\n"
@@ -448,7 +459,8 @@ async def admin_list_users(callback: CallbackQuery):
     if publishers:
         response += "📝 Разместители:\n"
         for publisher in publishers[:10]:
-            response += f"• @{publisher['username'] or 'без username'} (ID: {publisher['user_id']}) - {publisher['credits']} кредитов\n"
+            username = publisher.get('username', 'без username')
+            response += f"• @{username} (ID: {publisher['user_id']}) - {publisher['credits']} кредитов\n"
         if len(publishers) > 10:
             response += f"... и еще {len(publishers) - 10}\n"
         response += "\n"
@@ -495,8 +507,9 @@ async def make_publisher_command(message: Message):
         
         await db.update_user_role(user_id, "publisher")
         
+        username = user.get('username', 'без username')
         await message.answer(
-            f"✅ Пользователь @{user['username']} (ID: {user_id})\n"
+            f"✅ Пользователь @{username} (ID: {user_id})\n"
             f"теперь назначен 📝 Разместителем!"
         )
     except ValueError:
@@ -529,9 +542,10 @@ async def add_credits_command(message: Message):
         # Получаем обновленные данные
         updated_user = await db.get_user(user_id)
         
+        username = user.get('username', 'без username')
         await message.answer(
             f"✅ Успешно добавлено {credits} кредитов\n\n"
-            f"👤 Пользователю: @{user['username']}\n"
+            f"👤 Пользователю: @{username}\n"
             f"💎 Новый баланс: {updated_user['credits']}"
         )
     except ValueError:
@@ -553,7 +567,7 @@ async def block_post_command(message: Message):
     try:
         post_id = int(args[1])
         
-        # Получаем текущий статус
+        # Получаем текущий статус через функцию из database.py
         async with aiosqlite.connect("bot_database.db") as db_conn:
             async with db_conn.execute("SELECT is_active FROM posts WHERE id = ?", (post_id,)) as cursor:
                 result = await cursor.fetchone()
@@ -591,38 +605,40 @@ async def find_user_command(message: Message):
     
     search_term = args[1]
     
+    # Пробуем поиск по ID
+    try:
+        user_id = int(search_term)
+        user = await db.get_user(user_id)
+    except ValueError:
+        user = None
+    
+    # Если не нашли по ID, ищем по username через функцию из database.py
+    if not user:
+        user = await db.get_user_by_username(search_term)
+        if not user:
+            # Если точный поиск не дал результатов, ищем частичное совпадение
+            all_users = await db.get_all_users()
+            matching_users = [u for u in all_users if search_term.lower() in u.get('username', '').lower()]
+            if matching_users:
+                user = matching_users[0]
+            else:
+                await message.answer(f"❌ Пользователь '{search_term}' не найден")
+                return
+    
+    if not user:
+        await message.answer(f"❌ Пользователь '{search_term}' не найден")
+        return
+    
+    role_text = {
+        "user": "👤 Пользователь",
+        "publisher": "📝 Разместитель", 
+        "admin": "👑 Администратор"
+    }
+    
+    # Получаем статистику пользователя
     async with aiosqlite.connect("bot_database.db") as db_conn:
-        db_conn.row_factory = aiosqlite.Row
-        
-        # Пробуем поиск по ID
-        try:
-            user_id = int(search_term)
-            async with db_conn.execute("SELECT  FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                user = await cursor.fetchone()
-        except ValueError:
-            user = None
-        
-        # Если не нашли по ID, ищем по username
-        if not user:
-            async with db_conn.execute(
-                "SELECT  FROM users WHERE username LIKE ?", 
-                (f"%{search_term}%",)
-            ) as cursor:
-                user = await cursor.fetchone()
-        
-        if not user:
-            await message.answer(f"❌ Пользователь '{search_term}' не найден")
-            return
-        
-        role_text = {
-            "user": "👤 Пользователь",
-            "publisher": "📝 Разместитель", 
-            "admin": "👑 Администратор"
-        }
-        
-        # Получаем статистику пользователя
         async with db_conn.execute(
-            "SELECT COUNT() FROM posts WHERE publisher_id = ?", 
+            "SELECT COUNT(*) FROM posts WHERE publisher_id = ?", 
             (user['user_id'],)
         ) as cursor:
             posts_count = (await cursor.fetchone())[0]
@@ -632,12 +648,65 @@ async def find_user_command(message: Message):
             (user['user_id'],)
         ) as cursor:
             total_views = (await cursor.fetchone())[0] or 0
+    
+    response = (
+        f"🔍 Информация о пользователе:\n\n"
+        f"🆔 ID: {user['user_id']}\n"
+        f"👤 Имя: {user['full_name']}\n"
+        f"📱 Username: @{user.get('username', 'без username')}\n"
+        f"🎭 Роль: {role_text.get(user['role'], '👤 Пользователь')}\n"
+        f"💰 Кредиты: {user['credits']}\n"
+        f"📝 Постов создано: {posts_count}\n"
+        f"👀 Всего просмотров: {total_views}\n"
+        f"📅 Регистрация: {user['created_at']}\n\n"
+        f"💡 Команды управления:\n"
+        f"/add_credits {user['user_id']} КОЛИЧЕСТВО\n"
+        f"/make_publisher {user['user_id']}"
+    )
+    
+    await message.answer(response)
+
+
+@router.callback_query(F.data.startswith("view_user_"))
+async def view_user_callback(callback: CallbackQuery):
+    """Просмотр пользователя по ID из коллбэка"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Нет прав")
+        return
+    
+    try:
+        user_id = int(callback.data.split("_")[2])
+        user = await db.get_user(user_id)
+        
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+        
+        role_text = {
+            "user": "👤 Пользователь",
+            "publisher": "📝 Разместитель", 
+            "admin": "👑 Администратор"
+        }
+        
+        # Получаем статистику пользователя
+        async with aiosqlite.connect("bot_database.db") as db_conn:
+            async with db_conn.execute(
+                "SELECT COUNT(*) FROM posts WHERE publisher_id = ?", 
+                (user['user_id'],)
+            ) as cursor:
+                posts_count = (await cursor.fetchone())[0]
+            
+            async with db_conn.execute(
+                "SELECT SUM(views) FROM posts WHERE publisher_id = ?", 
+                (user['user_id'],)
+            ) as cursor:
+                total_views = (await cursor.fetchone())[0] or 0
         
         response = (
             f"🔍 Информация о пользователе:\n\n"
             f"🆔 ID: {user['user_id']}\n"
             f"👤 Имя: {user['full_name']}\n"
-            f"📱 Username: @{user['username']}\n"
+            f"📱 Username: @{user.get('username', 'без username')}\n"
             f"🎭 Роль: {role_text.get(user['role'], '👤 Пользователь')}\n"
             f"💰 Кредиты: {user['credits']}\n"
             f"📝 Постов создано: {posts_count}\n"
@@ -648,4 +717,59 @@ async def find_user_command(message: Message):
             f"/make_publisher {user['user_id']}"
         )
         
-        await message.answer(response)
+        await callback.message.answer(response)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Ошибка в view_user_callback: {e}")
+        await callback.answer("❌ Ошибка при получении информации")
+
+
+@router.callback_query(F.data.startswith("post_stats_"))
+async def post_stats_callback(callback: CallbackQuery):
+    """Статистика поста"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Нет прав")
+        return
+    
+    try:
+        post_id = int(callback.data.split("_")[2])
+        
+        async with aiosqlite.connect("bot_database.db") as db_conn:
+            db_conn.row_factory = aiosqlite.Row
+            async with db_conn.execute(
+                """SELECT p.*, u.username, u.user_id as publisher_user_id 
+                   FROM posts p 
+                   LEFT JOIN users u ON p.publisher_id = u.user_id 
+                   WHERE p.id = ?""", 
+                (post_id,)
+            ) as cursor:
+                post = await cursor.fetchone()
+        
+        if not post:
+            await callback.answer("❌ Пост не найден")
+            return
+        
+        channels = json.loads(post['channels']) if post['channels'] else []
+        
+        response = (
+            f"📊 Статистика поста #{post['id']}\n\n"
+            f"👤 Автор: @{post['username'] or 'неизвестен'}\n"
+            f"🔗 Уникальный код: {post['unique_code']}\n"
+            f"👀 Просмотров: {post['views']}\n"
+            f"📅 Дата создания: {post['created_at']}\n"
+            f"📢 Каналов для подписки: {len(channels)}\n"
+        )
+        
+        if channels:
+            response += f"\n📋 Список каналов:\n"
+            for channel in channels:
+                response += f"• {channel}\n"
+        
+        # Получаем уникальных пользователей, которые просмотрели пост
+        # (это потребует дополнительной таблицы в БД, показываем базовую статистику)
+        
+        await callback.message.answer(response)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Ошибка в post_stats_callback: {e}")
+        await callback.answer("❌ Ошибка при получении статистики")
