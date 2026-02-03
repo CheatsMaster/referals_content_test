@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import CommandStart, Command
 from aiogram.exceptions import TelegramAPIError
 
-from config import GLOBAL_CHANNEL, TARIFFS
+from config import TARIFFS
 import database as db
 from subscription_checker import SubscriptionChecker
 
@@ -115,30 +115,30 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
     
     checker = SubscriptionChecker(bot)
     
-    '''' Проверяем подписку на глобальный канал
-    if GLOBAL_CHANNEL:
-        logger.info(f"Проверка глобального канала {GLOBAL_CHANNEL} для user_id={user_id}")
+    # Проверяем подписку на глобальный канал
+    #if GLOBAL_CHANNEL:
+        #logger.info(f"Проверка глобального канала {GLOBAL_CHANNEL} для user_id={user_id}")
         
-        is_subscribed, error_msg = await checker.check_user_subscription(
-            user_id, 
-            GLOBAL_CHANNEL
-        )
+        #is_subscribed, error_msg = await checker.check_user_subscription(
+            #user_id, 
+            #GLOBAL_CHANNEL
+        #)
         
-        logger.info(f"Глобальная проверка: subscribed={is_subscribed}, error={error_msg}")
+        #logger.info(f"Глобальная проверка: subscribed={is_subscribed}, error={error_msg}")
         
-        if not is_subscribed:
-            logger.info(f"Пользователь НЕ подписан на глобальный канал")
-            await bot.send_message(chat_id, f"⚠️ {error_msg}")
-            await show_subscription_request_for_user(
-                bot=bot,
-                chat_id=chat_id,
-                user_id=user_id,
-                channel=GLOBAL_CHANNEL,
-                unique_code=unique_code
-            )
-            return
-        else:
-            logger.info(f"✅ Пользователь подписан на глобальный канал") ''''
+        #if not is_subscribed:
+            #logger.info(f"Пользователь НЕ подписан на глобальный канал")
+            #await bot.send_message(chat_id, f"⚠️ {error_msg}")
+            #await show_subscription_request_for_user(
+                #bot=bot,
+                #chat_id=chat_id,
+                #user_id=user_id,
+                #channel=GLOBAL_CHANNEL,
+                #unique_code=unique_code
+            #)
+            #return
+        #else:
+            #logger.info(f"✅ Пользователь подписан на глобальный канал")
     
     # Проверяем подписки на каналы разместителя
     channels = json.loads(post['channels']) if post['channels'] else []
@@ -441,57 +441,57 @@ async def buy_subscription_callback(callback: CallbackQuery):
     await callback.answer()
 
 
-"""@router.callback_query(F.data.startswith("tariff_"))
-async def process_tariff(callback: CallbackQuery):
-    """Обработка выбора тарифа"""
-    tariff = callback.data.split("_")[1]
+#@router.callback_query(F.data.startswith("tariff_"))
+#async def process_tariff(callback: CallbackQuery):
+    #"""Обработка выбора тарифа"""
+    #tariff = callback.data.split("_")[1]
     
-    if tariff not in TARIFFS:
-        await callback.answer("❌ Тариф не найден")
-        return
+    #if tariff not in TARIFFS:
+        #await callback.answer("❌ Тариф не найден")
+        #return
     
-    price = TARIFFS[tariff]["price"]
-    credits = TARIFFS[tariff]["credits"]
+    #price = TARIFFS[tariff]["price"]
+    #credits = TARIFFS[tariff]["credits"]
     
     # Создаем запись о платеже
-    payment_id = await db.create_payment(
-        user_id=callback.from_user.id,
-        amount=price,
-        credits=credits
-    )
+    #payment_id = await db.create_payment(
+        #user_id=callback.from_user.id,
+        #amount=price,
+        #credits=credits
+    #)
     
-     Начисляем кредиты
-    await db.add_credits(callback.from_user.id, credits)
-    await db.update_payment_status(payment_id, "completed")
+    # Начисляем кредиты
+    #await db.add_credits(callback.from_user.id, credits)
+    #await db.update_payment_status(payment_id, "completed")
     
     # Автоматически назначаем роль разместителя
-    user = await db.get_user(callback.from_user.id)
-    if user['role'] == 'user':
-        await db.update_user_role(callback.from_user.id, 'publisher')
+    #user = await db.get_user(callback.from_user.id)
+    #if user['role'] == 'user':
+        #await db.update_user_role(callback.from_user.id, 'publisher')
     
     # Обновляем сообщение
-    await callback.message.edit_text(
-        f"✅ Оплата принята!\n\n"
-        f"💎 Начислено: {credits} кредитов\n"
-        f"💰 Сумма: {price} руб\n"
-        f"📦 Тариф: {tariff.capitalize()}\n"
-        f"🎭 Новая роль: Разместитель\n\n"
-        f"🆔 ID платежа: {payment_id}\n\n"
-        f"💡 Теперь вы можете создавать посты командой /create_post"
-    )
+    #await callback.message.edit_text(
+        #f"✅ Оплата принята!\n\n"
+        #f"💎 Начислено: {credits} кредитов\n"
+        #f"💰 Сумма: {price} руб\n"
+        #f"📦 Тариф: {tariff.capitalize()}\n"
+        #f"🎭 Новая роль: Разместитель\n\n"
+        #f"🆔 ID платежа: {payment_id}\n\n"
+        #f"💡 Теперь вы можете создавать посты командой /create_post"
+    #)
     
-     Показываем кнопку для создания поста
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Создать пост", callback_data="create_post_now")],
-        [InlineKeyboardButton(text="💰 Еще кредитов", callback_data="buy_subscription")]
-    ])
+    # Показываем кнопку для создания поста
+    #keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        #[InlineKeyboardButton(text="📝 Создать пост", callback_data="create_post_now")],
+        #[InlineKeyboardButton(text="💰 Еще кредитов", callback_data="buy_subscription")]
+    #])
     
-    await callback.message.answer(
-        "🎉 Готово! Что дальше?",
-        reply_markup=keyboard
-    )
+    #await callback.message.answer(
+        #"🎉 Готово! Что дальше?",
+        #reply_markup=keyboard
+    #)
     
-    await callback.answer()"""
+    #await callback.answer()
 
 
 @router.callback_query(F.data == "my_profile")
