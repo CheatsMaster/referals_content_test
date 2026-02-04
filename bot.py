@@ -190,23 +190,6 @@ async def main():
         from database import init_db
         await init_db()
         logger.info("✅ База данных инициализирована")
-        
-        # Проверяем наличие поля post_title, если нет - добавляем
-        async with aiosqlite.connect("bot_database.db") as db_conn:
-            try:
-                # Пробуем получить список полей таблицы posts
-                async with db_conn.execute("PRAGMA table_info(posts)") as cursor:
-                    columns = await cursor.fetchall()
-                    columns = [col[1] for col in columns]  # Имена полей
-                    
-                    if 'post_title' not in columns:
-                        logger.info("🔄 Добавляем поле post_title в таблицу posts...")
-                        await db_conn.execute("ALTER TABLE posts ADD COLUMN post_title TEXT DEFAULT ''")
-                        await db_conn.commit()
-                        logger.info("✅ Поле post_title добавлено")
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось проверить структуру таблицы: {e}")
-                
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации БД: {e}")
         # Продолжаем даже если БД не инициализировалась
