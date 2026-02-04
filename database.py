@@ -3,17 +3,14 @@ import json
 import hashlib
 import time
 from datetime import datetime
-import logging
-import os
 
-DB_PATH = os.getenv("DB_PATH", "bot_database.db")
-logger = logging.getLogger(__name__)
+DB_PATH = "bot_database.db"
 
 async def init_db():
     """Инициализация базы данных"""
-    async with aiosqlite.connect(DB_PATH) as conn:
+    async with aiosqlite.connect(DB_PATH) as db:
         # Таблица пользователей
-        await conn.execute('''CREATE TABLE IF NOT EXISTS users (
+        await db.execute('''CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER UNIQUE,
             username TEXT,
@@ -23,11 +20,10 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         
-        # Таблица постов (ДОБАВЛЕНО ПОЛЕ post_title)
-        await conn.execute('''CREATE TABLE IF NOT EXISTS posts (
+        # Таблица постов
+        await db.execute('''CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             publisher_id INTEGER,
-            post_title TEXT DEFAULT '',
             content_type TEXT,
             content_text TEXT,
             content_file_id TEXT,
@@ -39,7 +35,7 @@ async def init_db():
         )''')
         
         # Таблица подписок
-        await conn.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
+        await db.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             channel_id TEXT,
@@ -48,7 +44,7 @@ async def init_db():
         )''')
         
         # Таблица платежей
-        await conn.execute('''CREATE TABLE IF NOT EXISTS payments (
+        await db.execute('''CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             amount REAL,
@@ -57,63 +53,39 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         
-        # Таблица: Подписки на обновления постов
-        await conn.execute('''CREATE TABLE IF NOT EXISTS post_updates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            post_id INTEGER,
-            user_id INTEGER,
-            subscribed BOOLEAN DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(post_id, user_id)
-        )''')
-        
-        # Таблица: Обновления (редакции) постов
-        await conn.execute('''CREATE TABLE IF NOT EXISTS post_revisions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            post_id INTEGER,
-            revision_number INTEGER DEFAULT 1,
-            content_type TEXT,
-            content_text TEXT,
-            content_file_id TEXT,
-            channels TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            sent_at TIMESTAMP,
-            FOREIGN KEY (post_id) REFERENCES posts (id)
-        )''')
-        
-        await conn.commit()
+        await db.commit()
 
 # Функции для работы с пользователями
 async def get_user(user_id: int):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
 async def create_user(user_id: int, username: str, full_name: str):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
             "INSERT OR IGNORE INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
             (user_id, username, full_name)
         )
-        await conn.commit()
+        await db.commit()
 
 async def update_user_role(user_id: int, role: str):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
             "UPDATE users SET role = ? WHERE user_id = ?",
             (role, user_id)
         )
-        await conn.commit()
+        await db.commit()
 
 async def add_credits(user_id: int, amount: int):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
             "UPDATE users SET credits = credits + ? WHERE user_id = ?",
             (amount, user_id)
         )
-        await conn.commit()
+        await db.commit()
 
 # Функции для работы с постами
 async def create_post(publisher_id: int, content_type: str, content_text: str, 
@@ -121,8 +93,8 @@ async def create_post(publisher_id: int, content_type: str, content_text: str,
     # Генерация уникального кода
     unique_code = hashlib.md5(f"{publisher_id}{time.time()}".encode()).hexdigest()[:10]
     
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute('''INSERT INTO posts 
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''INSERT INTO posts 
             (publisher_id, content_type, content_text, content_file_id, channels, unique_code)
             VALUES (?, ?, ?, ?, ?, ?)''', (
             publisher_id, 
@@ -132,96 +104,52 @@ async def create_post(publisher_id: int, content_type: str, content_text: str,
             json.dumps(channels),
             unique_code
         ))
-        await conn.commit()
-    
-    return unique_code
-
-async def create_post_with_title(publisher_id: int, post_title: str, content_type: str, 
-                               content_text: str, content_file_id: str, channels: list) -> str:
-    import hashlib
-    import time
-    
-    # Генерация уникального кода
-    unique_code = hashlib.md5(f"{publisher_id}{time.time()}".encode()).hexdigest()[:10]
-    
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute('''INSERT INTO posts 
-            (publisher_id, post_title, content_type, content_text, content_file_id, channels, unique_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?)''', (
-            publisher_id, 
-            post_title,
-            content_type, 
-            content_text, 
-            content_file_id,
-            json.dumps(channels),
-            unique_code
-        ))
-        await conn.commit()
+        await db.commit()
     
     return unique_code
 
 async def get_post(unique_code: str):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT * FROM posts WHERE unique_code = ?", (unique_code,)) as cursor:
-            row = await cursor.fetchone()
-            return dict(row) if row else None
-
-async def get_post_by_id(post_id: int):
-    """Получить пост по ID"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)) as cursor:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM posts WHERE unique_code = ?", (unique_code,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
 async def increment_post_views(post_id: int):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
             "UPDATE posts SET views = views + 1 WHERE id = ?",
             (post_id,)
         )
-        await conn.commit()
+        await db.commit()
 
 async def get_user_posts(user_id: int):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
             "SELECT * FROM posts WHERE publisher_id = ? ORDER BY created_at DESC", 
             (user_id,)
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-async def update_post_content(post_id: int, content_type: str, content_text: str, 
-                            content_file_id: str, channels: list):
-    """Обновить содержимое поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute('''UPDATE posts 
-                           SET content_type = ?, content_text = ?, content_file_id = ?, 
-                               channels = ?, created_at = CURRENT_TIMESTAMP 
-                           WHERE id = ?''', 
-                        (content_type, content_text, content_file_id, 
-                         json.dumps(channels), post_id))
-        await conn.commit()
-
 async def toggle_post_status(post_id: int):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute("SELECT is_active FROM posts WHERE id = ?", (post_id,)) as cursor:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT is_active FROM posts WHERE id = ?", (post_id,)) as cursor:
             current = await cursor.fetchone()
             new_status = 0 if current[0] else 1
         
-        await conn.execute(
+        await db.execute(
             "UPDATE posts SET is_active = ? WHERE id = ?",
             (new_status, post_id)
         )
-        await conn.commit()
+        await db.commit()
         return new_status
 
 # Функции для работы с подписками
 async def check_subscription(user_id: int, channel_id: str) -> bool:
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
             "SELECT subscribed FROM subscriptions WHERE user_id = ? AND channel_id = ?",
             (user_id, channel_id)
         ) as cursor:
@@ -229,146 +157,39 @@ async def check_subscription(user_id: int, channel_id: str) -> bool:
             return bool(row[0]) if row else False
 
 async def update_subscription(user_id: int, channel_id: str, subscribed: bool = True):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute('''INSERT OR REPLACE INTO subscriptions (user_id, channel_id, subscribed)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''INSERT OR REPLACE INTO subscriptions (user_id, channel_id, subscribed)
             VALUES (?, ?, ?)''', (user_id, channel_id, 1 if subscribed else 0))
-        await conn.commit()
+        await db.commit()
 
 # Функции для работы с платежами
 async def create_payment(user_id: int, amount: float, credits: int) -> int:
-    async with aiosqlite.connect(DB_PATH) as conn:
-        cursor = await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
             "INSERT INTO payments (user_id, amount, credits) VALUES (?, ?, ?)",
             (user_id, amount, credits)
         )
-        await conn.commit()
+        await db.commit()
         return cursor.lastrowid
 
 async def update_payment_status(payment_id: int, status: str):
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
             "UPDATE payments SET status = ? WHERE id = ?",
             (status, payment_id)
         )
-        await conn.commit()
-
-# Функции для работы с обновлениями постов
-async def subscribe_to_post_updates(user_id: int, post_id: int) -> bool:
-    """Подписаться на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        try:
-            await conn.execute('''INSERT OR REPLACE INTO post_updates (post_id, user_id, subscribed) 
-                               VALUES (?, ?, 1)''', 
-                           (post_id, user_id))
-            await conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при подписке на обновления: {e}")
-            return False
-
-async def unsubscribe_from_post_updates(user_id: int, post_id: int) -> bool:
-    """Отписаться от обновлений поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        try:
-            await conn.execute('''UPDATE post_updates SET subscribed = 0 
-                               WHERE post_id = ? AND user_id = ?''', 
-                           (post_id, user_id))
-            await conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при отписке от обновлений: {e}")
-            return False
-
-async def is_subscribed_to_updates(user_id: int, post_id: int) -> bool:
-    """Проверить, подписан ли пользователь на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute('''SELECT subscribed FROM post_updates 
-                                WHERE post_id = ? AND user_id = ? AND subscribed = 1''', 
-                            (post_id, user_id)) as cursor:
-            result = await cursor.fetchone()
-            return bool(result)
-
-async def get_post_subscribers(post_id: int) -> list:
-    """Получить список подписчиков на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute('''SELECT u.user_id, u.username, u.full_name 
-                                FROM post_updates pu
-                                JOIN users u ON pu.user_id = u.user_id
-                                WHERE pu.post_id = ? AND pu.subscribed = 1''', 
-                            (post_id,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-async def create_post_revision(post_id: int, content_type: str, content_text: str, 
-                              content_file_id: str, channels: list) -> int:
-    """Создать новую редакцию поста"""
-    # Получаем номер следующей редакции
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute('''SELECT MAX(revision_number) FROM post_revisions 
-                                WHERE post_id = ?''', (post_id,)) as cursor:
-            max_revision = await cursor.fetchone()
-            next_revision = (max_revision[0] or 0) + 1
-        
-        cursor = await conn.execute('''INSERT INTO post_revisions 
-                                   (post_id, revision_number, content_type, content_text, 
-                                    content_file_id, channels, created_at)
-                                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''', 
-                                (post_id, next_revision, content_type, content_text,
-                                 content_file_id, json.dumps(channels)))
-        await conn.commit()
-        return cursor.lastrowid
-
-async def get_post_revisions(post_id: int) -> list:
-    """Получить все редакции поста"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute('''SELECT * FROM post_revisions 
-                                WHERE post_id = ? 
-                                ORDER BY revision_number DESC''', (post_id,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-async def mark_revision_as_sent(revision_id: int):
-    """Отметить редакцию как отправленную"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute('''UPDATE post_revisions SET sent_at = CURRENT_TIMESTAMP 
-                           WHERE id = ?''', (revision_id,))
-        await conn.commit()
-
-async def get_post_with_revisions(post_id: int):
-    """Получить пост со всеми редакциями"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        
-        # Получаем основной пост
-        async with conn.execute('''SELECT * FROM posts WHERE id = ?''', (post_id,)) as cursor:
-            post = await cursor.fetchone()
-        
-        if not post:
-            return None
-        
-        # Получаем редакции
-        async with conn.execute('''SELECT * FROM post_revisions 
-                                WHERE post_id = ? 
-                                ORDER BY revision_number DESC''', (post_id,)) as cursor:
-            revisions = await cursor.fetchall()
-        
-        post_dict = dict(post)
-        post_dict['revisions'] = [dict(rev) for rev in revisions]
-        
-        return post_dict
+        await db.commit()
 
 # Статистика
 async def get_stats():
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute("SELECT COUNT(*) FROM users") as cursor:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
             total_users = (await cursor.fetchone())[0]
         
-        async with conn.execute("SELECT COUNT(*) FROM posts") as cursor:
+        async with db.execute("SELECT COUNT(*) FROM posts") as cursor:
             total_posts = (await cursor.fetchone())[0]
         
-        async with conn.execute("SELECT SUM(views) FROM posts") as cursor:
+        async with db.execute("SELECT SUM(views) FROM posts") as cursor:
             total_views = (await cursor.fetchone())[0] or 0
         
         return {
@@ -379,17 +200,17 @@ async def get_stats():
 
 async def get_all_users():
     """Получить всех пользователей"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT * FROM users ORDER BY created_at DESC") as cursor:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users ORDER BY created_at DESC") as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
 async def get_all_posts():
     """Получить все посты"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
             """SELECT p.*, u.username 
                FROM posts p 
                LEFT JOIN users u ON p.publisher_id = u.user_id 
@@ -400,9 +221,9 @@ async def get_all_posts():
 
 async def get_user_by_username(username: str):
     """Найти пользователя по username"""
-    async with aiosqlite.connect(DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute(
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
             "SELECT * FROM users WHERE username = ?", 
             (username,)
         ) as cursor:

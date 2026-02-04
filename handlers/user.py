@@ -5,35 +5,23 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram.exceptions import TelegramAPIError
-from aiogram.fsm.context import FSMContext
 
-#from config import TARIFFS
+from config import TARIFFS
+import database as db
 from subscription_checker import SubscriptionChecker
 
 router = Router()
 logger = logging.getLogger(__name__)
 
-print(f"DEBUG: Загружается user.py")
 
 @router.message(CommandStart())
 async def start_command(message: Message):
     """Обработчик команды /start"""
-    logger.info(f"Получена команда /start от {message.from_user.id}")
-    print(f"DEBUG: /start от {message.from_user.id}")  # <-- ДОБАВИТЬ
-    
-    # Импорт внутри функции чтобы избежать циклических зависимостей
-    import database as db
-    
-    try:
-        await db.create_user(
-            user_id=message.from_user.id,
-            username=message.from_user.username,
-            full_name=message.from_user.full_name
-        )
-        print(f"DEBUG: Пользователь создан")  # <-- ДОБАВИТЬ
-    except Exception as e:
-        print(f"ERROR: Ошибка создания пользователя: {e}")  # <-- ДОБАВИТЬ
-        logger.error(f"Ошибка создания пользователя: {e}")
+    await db.create_user(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        full_name=message.from_user.full_name
+    )
     
     args = message.text.split()
     
@@ -74,7 +62,6 @@ async def handle_post_access(message: Message, unique_code: str):
         unique_code=unique_code
     )
 
-
 async def show_subscription_request(message: Message, channel: str, unique_code: str):
     """Запрос на подписку на один канал (для /start команды)"""
     # Просто вызываем новую функцию
@@ -85,7 +72,6 @@ async def show_subscription_request(message: Message, channel: str, unique_code:
         channel=channel,
         unique_code=unique_code
     )
-
 
 async def show_channels_subscription_request(message: Message, channels: list, unique_code: str):
     """Запрос на подписку на несколько каналов (для /start команды)"""
@@ -98,7 +84,6 @@ async def show_channels_subscription_request(message: Message, channels: list, u
         unique_code=unique_code
     )
 
-
 async def show_post_content(message: Message, post: dict):
     """Показ контента (для /start команды)"""
     # Просто вызываем новую функцию
@@ -107,7 +92,6 @@ async def show_post_content(message: Message, post: dict):
         chat_id=message.chat.id,
         post=post
     )
-
 
 async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, unique_code: str):
     """
@@ -132,30 +116,29 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
     checker = SubscriptionChecker(bot)
     
     # Проверяем подписку на глобальный канал
-    # (Раскомментируйте если нужно)
-    # if GLOBAL_CHANNEL:
-    #     logger.info(f"Проверка глобального канала {GLOBAL_CHANNEL} для user_id={user_id}")
-    #     
-    #     is_subscribed, error_msg = await checker.check_user_subscription(
-    #         user_id, 
-    #         GLOBAL_CHANNEL
-    #     )
-    #     
-    #     logger.info(f"Глобальная проверка: subscribed={is_subscribed}, error={error_msg}")
-    #     
-    #     if not is_subscribed:
-    #         logger.info(f"Пользователь НЕ подписан на глобальный канал")
-    #         await bot.send_message(chat_id, f"⚠️ {error_msg}")
-    #         await show_subscription_request_for_user(
-    #             bot=bot,
-    #             chat_id=chat_id,
-    #             user_id=user_id,
-    #             channel=GLOBAL_CHANNEL,
-    #             unique_code=unique_code
-    #         )
-    #         return
-    #     else:
-    #         logger.info(f"✅ Пользователь подписан на глобальный канал")
+    #if GLOBAL_CHANNEL:
+        #logger.info(f"Проверка глобального канала {GLOBAL_CHANNEL} для user_id={user_id}")
+        
+        #is_subscribed, error_msg = await checker.check_user_subscription(
+            #user_id, 
+            #GLOBAL_CHANNEL
+        #)
+        
+        #logger.info(f"Глобальная проверка: subscribed={is_subscribed}, error={error_msg}")
+        
+        #if not is_subscribed:
+            #logger.info(f"Пользователь НЕ подписан на глобальный канал")
+            #await bot.send_message(chat_id, f"⚠️ {error_msg}")
+            #await show_subscription_request_for_user(
+                #bot=bot,
+                #chat_id=chat_id,
+                #user_id=user_id,
+                #channel=GLOBAL_CHANNEL,
+                #unique_code=unique_code
+            #)
+            #return
+        #else:
+            #logger.info(f"✅ Пользователь подписан на глобальный канал")
     
     # Проверяем подписки на каналы разместителя
     channels = json.loads(post['channels']) if post['channels'] else []
@@ -211,7 +194,6 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
     await db.increment_post_views(post['id'])
     await show_post_content_for_user(bot, chat_id, post)
 
-
 async def show_subscription_request_for_user(bot: Bot, chat_id: int, user_id: int, channel: str, unique_code: str):
     """Запрос на подписку для конкретного пользователя"""
     # Убираем @ из channel для callback_data, чтобы избежать проблем с _
@@ -237,7 +219,6 @@ async def show_subscription_request_for_user(bot: Bot, chat_id: int, user_id: in
         reply_markup=keyboard,
         parse_mode="HTML"
     )
-
 
 async def show_channels_subscription_request_for_user(bot: Bot, chat_id: int, user_id: int, channels: list, unique_code: str):
     """Запрос на подписку на несколько каналов для конкретного пользователя"""
@@ -274,13 +255,9 @@ async def show_channels_subscription_request_for_user(bot: Bot, chat_id: int, us
         reply_markup=keyboard
     )
 
-
 async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
     """Показ контента для конкретного пользователя"""
     try:
-        # Проверяем подписан ли пользователь на обновления
-        is_subscribed = await db.is_subscribed_to_updates(chat_id, post['id'])
-        
         # Базовый текст с информацией об успешном открытии
         success_text = "🎉 <b>Контент успешно открыт!</b>\n\n"
         
@@ -290,17 +267,14 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
         
         success_text += "Хотите также размещать контент?\nСтаньте разместителем!"
         
-        # Создаем клавиатуру с кнопкой подписки
-        subscribe_text = "🔔 Подписаться на обновления" if not is_subscribed else "🔕 Отписаться от обновлений"
-        subscribe_callback = f"subscribe_{post['id']}" if not is_subscribed else f"unsubscribe_{post['id']}"
-        
+        # Создаем клавиатуру
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=subscribe_text, callback_data=subscribe_callback)],
             [InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")]
         ])
         
         # В зависимости от типа контента отправляем по-разному
         if post['content_type'] == 'text':
+            # Для текста просто отправляем сообщение с клавиатурой
             await bot.send_message(
                 chat_id=chat_id,
                 text=success_text,
@@ -309,6 +283,7 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         elif post['content_type'] == 'photo':
+            # Для фото отправляем фото с подписью и клавиатурой
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=post['content_file_id'],
@@ -318,6 +293,7 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         elif post['content_type'] == 'video':
+            # Для видео отправляем видео с подписью и клавиатурой
             await bot.send_video(
                 chat_id=chat_id,
                 video=post['content_file_id'],
@@ -327,6 +303,7 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         else:
+            # Если тип неизвестен, отправляем просто текст
             await bot.send_message(
                 chat_id=chat_id,
                 text=success_text,
@@ -341,7 +318,6 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             text="❌ Произошла ошибка при показе контента"
         )
 
-
 @router.callback_query(F.data.startswith("check_sub:"))
 async def check_single_subscription(callback: CallbackQuery):
     """Проверка подписки на один канал"""
@@ -352,8 +328,8 @@ async def check_single_subscription(callback: CallbackQuery):
         # Убираем префикс "check_sub:"
         data_without_prefix = callback.data[10:]  # "check_sub:" имеет длину 10 символов
         
-        # Разделяем по ":" (используем максимум 2 раза, так как channel может содержать двоеточия)
-        parts = data_without_prefix.split(":", 1)  # Разделяем на 2 части максимум
+        # Разделяем по ":"
+        parts = data_without_prefix.split(":", 2)  # Разделяем максимум на 3 части
         
         if len(parts) < 2:
             await callback.answer("❌ Ошибка в данных кнопки")
@@ -372,7 +348,7 @@ async def check_single_subscription(callback: CallbackQuery):
         logger.info(f"Уникальный код: {unique_code}")
         
         await callback.answer("🔍 Проверяем подписку...")
-        await asyncio.sleep(2)  # Уменьшил время ожидания
+        await asyncio.sleep(5)
         
         # Удаляем сообщение с кнопками
         try:
@@ -414,7 +390,6 @@ async def check_single_subscription(callback: CallbackQuery):
         logger.error(f"Ошибка в check_single_subscription: {e}", exc_info=True)
         await callback.answer("❌ Произошла ошибка")
 
-
 @router.callback_query(F.data.startswith("check_all_"))
 async def check_all_subscriptions(callback: CallbackQuery):
     """Проверка подписок на все каналы"""
@@ -431,7 +406,7 @@ async def check_all_subscriptions(callback: CallbackQuery):
         logger.info(f"Уникальный код: {unique_code}")
         
         await callback.answer("🔍 Проверяем все подписки...")
-        await asyncio.sleep(2)  # Уменьшил время ожидания
+        await asyncio.sleep(5)
         
         # Удаляем сообщение с кнопками
         try:
@@ -450,7 +425,6 @@ async def check_all_subscriptions(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка в check_all_subscriptions: {e}", exc_info=True)
         await callback.answer("❌ Произошла ошибка")
-
 
 @router.callback_query(F.data == "buy_subscription")
 async def buy_subscription_callback(callback: CallbackQuery):
@@ -483,19 +457,67 @@ async def buy_subscription_callback(callback: CallbackQuery):
     await callback.answer()
 
 
+#@router.callback_query(F.data.startswith("tariff_"))
+#async def process_tariff(callback: CallbackQuery):
+    #"""Обработка выбора тарифа"""
+    #tariff = callback.data.split("_")[1]
+    
+    #if tariff not in TARIFFS:
+        #await callback.answer("❌ Тариф не найден")
+        #return
+    
+    #price = TARIFFS[tariff]["price"]
+    #credits = TARIFFS[tariff]["credits"]
+    
+    # Создаем запись о платеже
+    #payment_id = await db.create_payment(
+        #user_id=callback.from_user.id,
+        #amount=price,
+        #credits=credits
+    #)
+    
+    # Начисляем кредиты
+    #await db.add_credits(callback.from_user.id, credits)
+    #await db.update_payment_status(payment_id, "completed")
+    
+    # Автоматически назначаем роль разместителя
+    #user = await db.get_user(callback.from_user.id)
+    #if user['role'] == 'user':
+        #await db.update_user_role(callback.from_user.id, 'publisher')
+    
+    # Обновляем сообщение
+    #await callback.message.edit_text(
+        #f"✅ Оплата принята!\n\n"
+        #f"💎 Начислено: {credits} кредитов\n"
+        #f"💰 Сумма: {price} руб\n"
+        #f"📦 Тариф: {tariff.capitalize()}\n"
+        #f"🎭 Новая роль: Разместитель\n\n"
+        #f"🆔 ID платежа: {payment_id}\n\n"
+        #f"💡 Теперь вы можете создавать посты командой /create_post"
+    #)
+    
+    # Показываем кнопку для создания поста
+    #keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        #[InlineKeyboardButton(text="📝 Создать пост", callback_data="create_post_now")],
+        #[InlineKeyboardButton(text="💰 Еще кредитов", callback_data="buy_subscription")]
+    #])
+    
+    #await callback.message.answer(
+        #"🎉 Готово! Что дальше?",
+        #reply_markup=keyboard
+    #)
+    
+    #await callback.answer()
+
+
 @router.callback_query(F.data == "my_profile")
 async def my_profile_callback(callback: CallbackQuery):
     """Показ профиля"""
     user = await db.get_user(callback.from_user.id)
     
     if not user:
-        # Если пользователь не найден, создаем его
-        await db.create_user(
-            user_id=callback.from_user.id,
-            username=callback.from_user.username,
-            full_name=callback.from_user.full_name
-        )
-        user = await db.get_user(callback.from_user.id)
+        await callback.answer("❌ Вы не зарегистрированы в системе")
+        return
     
     role_emoji = {
         "user": "👤",
@@ -569,7 +591,7 @@ async def how_create_post_callback(callback: CallbackQuery):
         "   • Или обратитесь к администратору\n\n"
         "2. Купите кредиты\n"
         "   • 1 кредит = 1 канал в посте\n"
-        "   • Используйте (/subscribe)\n\n"
+        "   • Используйте /subscribe\n\n"
         "3. Создайте пост\n"
         "   • Используйте команду /create_post\n"
         "   • Отправьте текст, фото или видео\n"
@@ -596,8 +618,7 @@ async def how_buy_credits_callback(callback: CallbackQuery):
         "1. Выберите тариф\n"
         "   • Базовая: 100 руб = 10 кредитов\n"
         "   • Стандартная: 250 руб = 30 кредитов\n"
-        "   • Премиум: 500 руб = 70 кредитов\n"
-        "   • Кастом: 10 руб = 1 кредит [NEW]\n"
+        "   • Премиум: 500 руб = 70 кредитов\n\n"
         "2. Оплатите\n"
         "   • Нажмите на нужный тариф\n"
         "   • Кредиты начислятся мгновенно\n\n"
@@ -628,13 +649,14 @@ async def how_protection_callback(callback: CallbackQuery):
         "• Нельзя обойти или подделать\n"
         "• Проверка в реальном времени\n\n"
         "📢 Обязательные каналы:\n"
-        "• Каналы разместителя - на выбор автора\n\n"
+        "1. Глобальный канал - обязателен для всех\n"
+        "2. Каналы разместителя - на выбор автора\n\n"
         "🛡️ Для разместителей:\n"
         "• Вы гарантированно получаете подписчиков\n"
         "• Каждый пользователь должен подписаться\n"
         "• Проверка перед показом контента\n\n"
         "⚙️ Технически:\n"
-        "• Бот проверяет статус подпики\n"
+        "• Бот проверяет статус подписки\n"
         "• Использует официальный API Telegram\n"
         "• Надежно и безопасно",
         reply_markup=keyboard
@@ -646,15 +668,6 @@ async def how_protection_callback(callback: CallbackQuery):
 async def become_publisher_callback(callback: CallbackQuery):
     """Обработка кнопки 'Создать свой пост'"""
     user = await db.get_user(callback.from_user.id)
-    
-    # Если пользователь не найден, создаем его
-    if not user:
-        await db.create_user(
-            user_id=callback.from_user.id,
-            username=callback.from_user.username,
-            full_name=callback.from_user.full_name
-        )
-        user = await db.get_user(callback.from_user.id)
     
     # Если пользователь уже разместитель
     if user['role'] in ['publisher', 'admin']:
@@ -711,20 +724,10 @@ async def become_publisher_callback(callback: CallbackQuery):
     )
     await callback.answer()
 
-
 @router.callback_query(F.data == "create_post_now")
 async def create_post_now_callback(callback: CallbackQuery):
     """Переход к созданию поста"""
     user = await db.get_user(callback.from_user.id)
-    
-    # Если пользователь не найден, создаем его
-    if not user:
-        await db.create_user(
-            user_id=callback.from_user.id,
-            username=callback.from_user.username,
-            full_name=callback.from_user.full_name
-        )
-        user = await db.get_user(callback.from_user.id)
     
     if user['role'] != 'publisher' and user['role'] != 'admin':
         await callback.answer("❌ У вас нет прав разместителя")
@@ -757,13 +760,8 @@ async def profile_command(message: Message):
     user = await db.get_user(message.from_user.id)
     
     if not user:
-        # Создаем пользователя если его нет
-        await db.create_user(
-            user_id=message.from_user.id,
-            username=message.from_user.username,
-            full_name=message.from_user.full_name
-        )
-        user = await db.get_user(message.from_user.id)
+        await message.answer("❌ Вы не зарегистрированы в системе")
+        return
     
     role_emoji = {
         "user": "👤",
@@ -852,13 +850,8 @@ async def status_command(message: Message):
     user = await db.get_user(message.from_user.id)
     
     if not user:
-        # Создаем пользователя если его нет
-        await db.create_user(
-            user_id=message.from_user.id,
-            username=message.from_user.username,
-            full_name=message.from_user.full_name
-        )
-        user = await db.get_user(message.from_user.id)
+        await message.answer("❌ Вы не зарегистрированы в системе")
+        return
     
     role_text = {
         "user": "👤 Обычный пользователь\n\n"
@@ -931,62 +924,3 @@ async def check_channel_command(message: Message):
         )
     
     await message.answer(response)
-
-
-# ДОБАВЛЯЕМ ОБРАБОТЧИКИ ДЛЯ ПОДПИСКИ/ОТПИСКИ
-@router.callback_query(F.data.startswith("subscribe_"))
-async def subscribe_to_updates(callback: CallbackQuery):
-    """Подписаться на обновления поста"""
-    try:
-        post_id = int(callback.data.split("_")[1])
-        
-        success = await db.subscribe_to_post_updates(callback.from_user.id, post_id)
-        
-        if success:
-            await callback.answer("✅ Вы подписались на обновления!")
-            
-            # Обновляем кнопку
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔕 Отписаться от обновлений", callback_data=f"unsubscribe_{post_id}")],
-                [InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")]
-            ])
-            
-            try:
-                await callback.message.edit_reply_markup(reply_markup=keyboard)
-            except:
-                pass
-        else:
-            await callback.answer("❌ Ошибка при подписке")
-            
-    except Exception as e:
-        logger.error(f"Ошибка в subscribe_to_updates: {e}")
-        await callback.answer("❌ Ошибка")
-
-
-@router.callback_query(F.data.startswith("unsubscribe_"))
-async def unsubscribe_from_updates(callback: CallbackQuery):
-    """Отписаться от обновлений поста"""
-    try:
-        post_id = int(callback.data.split("_")[1])
-        
-        success = await db.unsubscribe_from_post_updates(callback.from_user.id, post_id)
-        
-        if success:
-            await callback.answer("✅ Вы отписались от обновлений")
-            
-            # Обновляем кнопку
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔔 Подписаться на обновления", callback_data=f"subscribe_{post_id}")],
-                [InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")]
-            ])
-            
-            try:
-                await callback.message.edit_reply_markup(reply_markup=keyboard)
-            except:
-                pass
-        else:
-            await callback.answer("❌ Ошибка при отписке")
-            
-    except Exception as e:
-        logger.error(f"Ошибка в unsubscribe_from_updates: {e}")
-        await callback.answer("❌ Ошибка")
