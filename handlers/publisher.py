@@ -12,6 +12,7 @@ router = Router()
 
 
 class CreatePostStates(StatesGroup):
+    waiting_name = State()
     waiting_content = State()
     waiting_channels = State()
 
@@ -27,15 +28,16 @@ async def create_post_start(message: Message, state: FSMContext):
     
     await message.answer(
         "📝 Создание нового поста:\n\n"
-        "1️⃣ Отправьте контент:\n"
+        "1️⃣ Придумайте название посту\n\"
+        "2️⃣ Отправьте контент:\n"
         "• Текст сообщения\n"
         "• Фото с подписью\n"
         "• Видео с подписью\n\n"
-        "2️⃣ Затем отправьте каналы для подписки\n"
-        "3️⃣ Получите уникальную ссылку\n\n"
+        "3️⃣ Затем отправьте каналы для подписки\n"
+        "Получите уникальную ссылку\n\n"
         "❌ Отправьте /cancel для отмены"
     )
-    await state.set_state(CreatePostStates.waiting_content)
+    await state.set_state(CreatePostStates.waiting_name)
     await state.update_data(content={"type": None, "text": "", "file_id": None})
 
 
@@ -44,6 +46,32 @@ async def cancel_create_post(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Создание поста отменено")
 
+@router.message(CreatePostStates.waiting_name)
+async def process_post_name(message: Message, state: FSMContext):
+    """Обработка названия поста"""
+    post_name = message.text.strip()
+    
+    if len(post_name) < 2:
+        await message.answer("❌ Название должно быть не менее 2 символов")
+        return
+    
+    if len(post_name) > 100:
+        await message.answer("❌ Название должно быть не более 100 символов")
+        return
+    
+    await state.update_data(post_name=post_name)
+    
+    await message.answer(
+        f"✅ Название сохранено: '{post_name}'\n\n"
+        f"2️⃣ Отправьте контент:\n"
+        f"• Текст сообщения\n"
+        f"• Фото с подписью\n"
+        f"• Видео с подписью\n\n"
+        f"3️⃣ Затем отправьте каналы для подписки\n"
+        f"Получите уникальную ссылку\n\n"
+        f"❌ Отправьте /cancel для отмены"
+    )
+    await state.set_state(CreatePostStates.waiting_content)
 
 @router.message(CreatePostStates.waiting_content)
 async def process_content(message: Message, state: FSMContext):
@@ -158,6 +186,7 @@ async def process_channels(message: Message, state: FSMContext):
 async def finish_post_creation(message: Message, state: FSMContext):
     """Завершение создания поста"""
     data = await state.get_data()
+    post_name = data["post_name"]
     content = data["content"]
     channels = data.get("channels", [])
     
@@ -181,6 +210,7 @@ async def finish_post_creation(message: Message, state: FSMContext):
     # Создаем пост
     unique_code = await db.create_post(
         publisher_id=message.from_user.id,
+        post_name=post_name,
         content_type=content["type"],
         content_text=content["text"],
         content_file_id=content["file_id"],
@@ -196,7 +226,7 @@ async def finish_post_creation(message: Message, state: FSMContext):
     short_url = f"t.me/{bot_username}?start={unique_code}"
     
     await message.answer(
-        f"🎉 Пост успешно создан!\n\n"
+        f"🎉 Пост '{post_name}' успешно создан!\n\n"
         f"🔗 Ссылка на пост:\n"
         f"👉 {post_url}\n\n"
         f"📎 Короткая ссылка:\n"

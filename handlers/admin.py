@@ -305,6 +305,7 @@ async def admin_all_posts(callback: CallbackQuery):
         
         message_text = (
             f"📝 Пост #{post['id']}\n\n"
+            f"📝 Название: {post['post_name']}\n\n"
             f"👤 Автор: @{username}\n"
             f"🔗 Код: {post['unique_code']}\n"
             f"👀 Просмотров: {post['views']}\n"
