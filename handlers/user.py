@@ -1,11 +1,11 @@
-import asyncio  # ДОБАВЛЕНО: импорт asyncio
+import asyncio
 import json
 import logging
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram.exceptions import TelegramAPIError
-from aiogram.fsm.context import FSMContext  # ДОБАВЛЕНО: импорт FSMContext
+from aiogram.fsm.context import FSMContext
 
 from config import TARIFFS
 import database as db

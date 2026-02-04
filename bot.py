@@ -37,7 +37,7 @@ def start_simple_healthcheck():
     
     try:
         server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
-        print("✅ Healthcheck сервер запущен на порт 8080")
+        print("✅ Healthcheck сервер запущен на порту 8080")
         print("🔗 URL: http://0.0.0.0:8080/health")
         server.serve_forever()
     except Exception as e:
@@ -272,6 +272,5 @@ if __name__ == "__main__":
         traceback.print_exc()
     
     print("\n👋 Завершение работы...")
-
 
 
