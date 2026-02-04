@@ -4,8 +4,9 @@ import hashlib
 import time
 from datetime import datetime
 import logging
+import os
 
-DB_PATH = "bot_database.db"
+DB_PATH = os.getenv("DB_PATH", "bot_database.db")
 logger = logging.getLogger(__name__)
 
 async def init_db():
@@ -26,7 +27,7 @@ async def init_db():
         await db.execute('''CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             publisher_id INTEGER,
-            post_title TEXT DEFAULT '',  -- НОВОЕ ПОЛЕ: название поста
+            post_title TEXT DEFAULT '',
             content_type TEXT,
             content_text TEXT,
             content_file_id TEXT,
