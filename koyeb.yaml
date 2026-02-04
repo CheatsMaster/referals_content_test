@@ -2,7 +2,7 @@ name: telegram-bot
 services:
   - name: telegram-bot
     docker:
-      image: python:3.13
+      image: python:3.13.7
       command: ["python", "bot.py"]
     ports:
       - port: 3000
