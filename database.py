@@ -93,7 +93,7 @@ async def get_user(user_id: int):
 async def create_user(user_id: int, username: str, full_name: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
+            "INSERT INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
             (user_id, username, full_name)
         )
         await db.commit()
@@ -137,10 +137,6 @@ async def create_post(publisher_id: int, content_type: str, content_text: str,
 
 async def create_post_with_title(publisher_id: int, post_title: str, content_type: str, 
                                content_text: str, content_file_id: str, channels: list) -> str:
-    """
-    Создать пост с названием
-    Возвращает уникальный код
-    """
     import hashlib
     import time
     
