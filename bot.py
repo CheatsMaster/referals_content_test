@@ -14,39 +14,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==================== HEALTHCHECK СЕРВЕР ====================
-def start_simple_healthcheck():
-    """Простой healthcheck сервер для Railway"""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == '/health':
-                self.send_response(200)
-                self.send_header('Content-type', 'text/plain')
-                self.end_headers()
-                self.wfile.write(b'OK')
-                # Тихий лог для дебага
-                print(f"[Healthcheck] OK - {time.ctime()}")
-            else:
-                self.send_response(404)
-                self.end_headers()
-        
-        def log_message(self, format, *args):
-            pass  # Отключаем стандартное логирование
-    
-    try:
-        server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
-        print("✅ Healthcheck сервер запущен на порту 8080")
-        print("🔗 URL: http://0.0.0.0:8080/health")
-        server.serve_forever()
-    except Exception as e:
-        print(f"❌ Ошибка healthcheck сервера: {e}")
-
-# Запускаем healthcheck сразу при старте
-health_thread = threading.Thread(target=start_simple_healthcheck, daemon=True)
-health_thread.start()
-
 # ==================== БЭКАП СЕРВИС ====================
 def start_backup_service():
     """Запустить службу бэкапов в B2"""
@@ -243,7 +210,6 @@ async def main():
     print("✅ БОТ УСПЕШНО ЗАПУЩЕН И РАБОТАЕТ")
     print("=" * 50)
     print("📊 Статус:")
-    print(f"  • Healthcheck: http://0.0.0.0:8080/health")
     print(f"  • Бэкапы: {'✅ Включены' if os.getenv('B2_KEY_ID') else '❌ Выключены'}")
     print(f"  • Бот: @{bot_info.username}")
     print("=" * 50)
