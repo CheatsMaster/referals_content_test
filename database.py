@@ -24,6 +24,7 @@ async def init_db():
         await db.execute('''CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             publisher_id INTEGER,
+            post_name TEXT,
             content_type TEXT,
             content_text TEXT,
             content_file_id TEXT,
@@ -88,16 +89,17 @@ async def add_credits(user_id: int, amount: int):
         await db.commit()
 
 # Функции для работы с постами
-async def create_post(publisher_id: int, content_type: str, content_text: str, 
+async def create_post(publisher_id: int, post_name: str, content_type: str, content_text: str, 
                      content_file_id: str, channels: list) -> str:
     # Генерация уникального кода
     unique_code = hashlib.md5(f"{publisher_id}{time.time()}".encode()).hexdigest()[:10]
     
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''INSERT INTO posts 
-            (publisher_id, content_type, content_text, content_file_id, channels, unique_code)
-            VALUES (?, ?, ?, ?, ?, ?)''', (
+            (publisher_id, post_name, content_type, content_text, content_file_id, channels, unique_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''', (
             publisher_id, 
+            post_name,
             content_type, 
             content_text, 
             content_file_id,
