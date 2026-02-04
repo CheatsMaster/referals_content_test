@@ -7,22 +7,33 @@ from aiogram.filters import CommandStart, Command
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 
-from config import TARIFFS
-import database as db
+#from config import TARIFFS
 from subscription_checker import SubscriptionChecker
 
 router = Router()
 logger = logging.getLogger(__name__)
 
+print(f"DEBUG: Загружается user.py")
 
 @router.message(CommandStart())
 async def start_command(message: Message):
     """Обработчик команды /start"""
-    await db.create_user(
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        full_name=message.from_user.full_name
-    )
+    logger.info(f"Получена команда /start от {message.from_user.id}")
+    print(f"DEBUG: /start от {message.from_user.id}")  # <-- ДОБАВИТЬ
+    
+    # Импорт внутри функции чтобы избежать циклических зависимостей
+    import database as db
+    
+    try:
+        await db.create_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            full_name=message.from_user.full_name
+        )
+        print(f"DEBUG: Пользователь создан")  # <-- ДОБАВИТЬ
+    except Exception as e:
+        print(f"ERROR: Ошибка создания пользователя: {e}")  # <-- ДОБАВИТЬ
+        logger.error(f"Ошибка создания пользователя: {e}")
     
     args = message.text.split()
     
