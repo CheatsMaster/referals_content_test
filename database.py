@@ -53,6 +53,15 @@ async def init_db():
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+
+        await db.execute('''CREATE TABLE IF NOT EXISTS post_updates_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER,
+            user_id INTEGER,
+            subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE,
+            UNIQUE(post_id, user_id)
+        )''')
         
         await db.commit()
 
@@ -91,7 +100,7 @@ async def add_credits(user_id: int, amount: int):
 # Функции для работы с постами
 async def create_post(publisher_id: int, post_name: str, content_type: str, content_text: str, 
                      content_file_id: str, channels: list) -> str:
-    # Генерация уникального кода
+    """Создать пост с названием"""
     unique_code = hashlib.md5(f"{publisher_id}{time.time()}".encode()).hexdigest()[:10]
     
     async with aiosqlite.connect(DB_PATH) as db:
@@ -110,12 +119,105 @@ async def create_post(publisher_id: int, post_name: str, content_type: str, cont
     
     return unique_code
 
-async def get_post(unique_code: str):
+async def subscribe_to_post_updates(user_id: int, post_id: int):
+    """Подписать пользователя на обновления поста"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute('''INSERT OR IGNORE INTO post_updates_subscriptions 
+                (post_id, user_id) VALUES (?, ?)''', 
+                (post_id, user_id))
+            await db.commit()
+            return True
+        except:
+            return False
+
+async def unsubscribe_from_post_updates(user_id: int, post_id: int):
+    """Отписать пользователя от обновлений поста"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''DELETE FROM post_updates_subscriptions 
+            WHERE post_id = ? AND user_id = ?''', 
+            (post_id, user_id))
+        await db.commit()
+        return True
+
+async def is_subscribed_to_updates(user_id: int, post_id: int) -> bool:
+    """Проверить подписку на обновления"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('''SELECT 1 FROM post_updates_subscriptions 
+            WHERE post_id = ? AND user_id = ?''', 
+            (post_id, user_id)) as cursor:
+            return await cursor.fetchone() is not None
+
+async def get_post_subscribers(post_id: int):
+    """Получить всех подписчиков на обновления поста"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('''SELECT user_id FROM post_updates_subscriptions 
+            WHERE post_id = ?''', (post_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [row['user_id'] for row in rows]
+
+async def update_post_content(post_id: int, content_type: str = None, 
+                             content_text: str = None, content_file_id: str = None):
+    """Обновить контент поста"""
+    updates = []
+    params = []
+    
+    if content_type:
+        updates.append("content_type = ?")
+        params.append(content_type)
+    
+    if content_text is not None:
+        updates.append("content_text = ?")
+        params.append(content_text)
+    
+    if content_file_id:
+        updates.append("content_file_id = ?")
+        params.append(content_file_id)
+    
+    if not updates:
+        return False
+    
+    params.append(post_id)
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f'''UPDATE posts SET {', '.join(updates)} 
+            WHERE id = ?''', params)
+        await db.commit()
+        return True
+    
+async def get_user_posts_with_stats(user_id: int):
+    """Получить посты пользователя со статистикой"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('''SELECT 
+            p.*,
+            (SELECT COUNT(*) FROM post_updates_subscriptions WHERE post_id = p.id) as subscribers_count
+            FROM posts p 
+            WHERE p.publisher_id = ? 
+            ORDER BY p.created_at DESC''', (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+async def get_post_by_id(post_id: int):
+    """Получить пост по ID"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM posts WHERE id = ?", (post_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+async def get_post_by_unique_code(unique_code: str):
+    """Получить пост по уникальному коду"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM posts WHERE unique_code = ?", (unique_code,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+async def get_post(unique_code: str):
+    """Алиас для совместимости"""
+    return await get_post_by_unique_code(unique_code)
 
 async def increment_post_views(post_id: int):
     async with aiosqlite.connect(DB_PATH) as db:

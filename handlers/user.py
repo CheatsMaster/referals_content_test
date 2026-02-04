@@ -192,7 +192,7 @@ async def handle_post_access_for_user(bot: Bot, user_id: int, chat_id: int, uniq
     # Все проверки пройдены - показываем контент
     logger.info(f"Показ контента для пользователя {user_id}")
     await db.increment_post_views(post['id'])
-    await show_post_content_for_user(bot, chat_id, post)
+    await show_post_content_for_user(bot, chat_id, post, user_id)
 
 async def show_subscription_request_for_user(bot: Bot, chat_id: int, user_id: int, channel: str, unique_code: str):
     """Запрос на подписку для конкретного пользователя"""
@@ -255,26 +255,38 @@ async def show_channels_subscription_request_for_user(bot: Bot, chat_id: int, us
         reply_markup=keyboard
     )
 
-async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
-    """Показ контента для конкретного пользователя"""
+async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict, user_id: int):
+    """Показ контента с кнопкой подписки на обновления"""
     try:
-        # Базовый текст с информацией об успешном открытии
-        success_text = "🎉 <b>Контент успешно открыт!</b>\n\n"
-        
-        # Добавляем текст контента, если он есть
-        if post['content_text']:
-            success_text += f"<b>Текст - </b>\n{post['content_text']}\n\n"
-        
-        success_text += "Хотите также размещать контент?\nСтаньте разместителем!"
+        # Проверяем подписан ли пользователь уже
+        is_subscribed = await db.is_subscribed_to_updates(user_id, post['id'])
         
         # Создаем клавиатуру
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")]
+            [
+                InlineKeyboardButton(
+                    text="🔔 Подписаться на обновления" if not is_subscribed else "🔕 Отписаться от обновлений",
+                    callback_data=f"toggle_updates_{post['id']}"
+                )
+            ],
+            [
+                InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")
+            ]
         ])
         
-        # В зависимости от типа контента отправляем по-разному
+        success_text = "🎉 <b>Контент успешно открыт!</b>\n\n"
+        
+        if post['content_text']:
+            success_text += f"<b>Текст - </b>\n{post['content_text']}\n\n"
+        
+        if not is_subscribed:
+            success_text += "🔔 <b>Хотите получать обновления этого поста?</b>\n"
+            success_text += "Нажмите кнопку ниже чтобы подписаться!\n\n"
+        
+        success_text += "Хотите также размещать контент?\nСтаньте разместителем!"
+        
+        # Отправляем контент
         if post['content_type'] == 'text':
-            # Для текста просто отправляем сообщение с клавиатурой
             await bot.send_message(
                 chat_id=chat_id,
                 text=success_text,
@@ -283,7 +295,6 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         elif post['content_type'] == 'photo':
-            # Для фото отправляем фото с подписью и клавиатурой
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=post['content_file_id'],
@@ -293,7 +304,6 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         elif post['content_type'] == 'video':
-            # Для видео отправляем видео с подписью и клавиатурой
             await bot.send_video(
                 chat_id=chat_id,
                 video=post['content_file_id'],
@@ -303,7 +313,6 @@ async def show_post_content_for_user(bot: Bot, chat_id: int, post: dict):
             )
         
         else:
-            # Если тип неизвестен, отправляем просто текст
             await bot.send_message(
                 chat_id=chat_id,
                 text=success_text,
@@ -924,3 +933,79 @@ async def check_channel_command(message: Message):
         )
     
     await message.answer(response)
+
+@router.callback_query(F.data.startswith("toggle_updates_"))
+async def toggle_updates_subscription(callback: CallbackQuery):
+    """Подписаться/отписаться от обновлений поста"""
+    try:
+        post_id = int(callback.data.split("_")[2])
+        
+        # Проверяем существует ли пост
+        post = await db.get_post_by_id(post_id)
+        if not post:
+            await callback.answer("❌ Пост не найден")
+            return
+        
+        # Проверяем подписку
+        is_subscribed = await db.is_subscribed_to_updates(callback.from_user.id, post_id)
+        
+        if is_subscribed:
+            # Отписываем
+            await db.unsubscribe_from_post_updates(callback.from_user.id, post_id)
+            await callback.answer("🔕 Вы отписались от обновлений")
+            
+            # Обновляем кнопку
+            try:
+                await callback.message.edit_reply_markup(
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🔔 Подписаться на обновления",
+                                callback_data=f"toggle_updates_{post_id}"
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")
+                        ]
+                    ])
+                )
+            except:
+                pass
+        
+        else:
+            # Подписываем
+            await db.subscribe_to_post_updates(callback.from_user.id, post_id)
+            await callback.answer("🔔 Вы подписались на обновления!")
+            
+            # Обновляем кнопку
+            try:
+                await callback.message.edit_reply_markup(
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🔕 Отписаться от обновлений",
+                                callback_data=f"toggle_updates_{post_id}"
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(text="📝 Создать свой пост", callback_data="become_publisher")
+                        ]
+                    ])
+                )
+            except:
+                pass
+            
+            # Отправляем благодарность
+            await callback.message.answer(
+                "🎉 <b>Спасибо за подписку!</b>\n\n"
+                "Теперь вы будете получать:\n"
+                "• Уведомления об обновлениях этого поста\n"
+                "• Новый контент от автора\n"
+                "• Возможные дополнительные материалы\n\n"
+                "💡 Автор может обновлять текст, фото или видео",
+                parse_mode="HTML"
+            )
+        
+    except Exception as e:
+        logger.error(f"Ошибка в toggle_updates_subscription: {e}")
+        await callback.answer("❌ Произошла ошибка")
