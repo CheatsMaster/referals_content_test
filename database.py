@@ -3,10 +3,8 @@ import json
 import hashlib
 import time
 from datetime import datetime
-import logging
 
 DB_PATH = "bot_database.db"
-logger = logging.getLogger(__name__)
 
 async def init_db():
     """Инициализация базы данных"""
@@ -22,11 +20,10 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         
-        # Таблица постов (ДОБАВЛЕНО ПОЛЕ post_title)
+        # Таблица постов
         await db.execute('''CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             publisher_id INTEGER,
-            post_title TEXT DEFAULT '',  -- НОВОЕ ПОЛЕ: название поста
             content_type TEXT,
             content_text TEXT,
             content_file_id TEXT,
@@ -56,30 +53,6 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         
-        # Таблица: Подписки на обновления постов
-        await db.execute('''CREATE TABLE IF NOT EXISTS post_updates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            post_id INTEGER,
-            user_id INTEGER,
-            subscribed BOOLEAN DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(post_id, user_id)
-        )''')
-        
-        # Таблица: Обновления (редакции) постов
-        await db.execute('''CREATE TABLE IF NOT EXISTS post_revisions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            post_id INTEGER,
-            revision_number INTEGER DEFAULT 1,
-            content_type TEXT,
-            content_text TEXT,
-            content_file_id TEXT,
-            channels TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            sent_at TIMESTAMP,
-            FOREIGN KEY (post_id) REFERENCES posts (id)
-        )''')
-        
         await db.commit()
 
 # Функции для работы с пользователями
@@ -93,7 +66,7 @@ async def get_user(user_id: int):
 async def create_user(user_id: int, username: str, full_name: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
             (user_id, username, full_name)
         )
         await db.commit()
@@ -135,42 +108,10 @@ async def create_post(publisher_id: int, content_type: str, content_text: str,
     
     return unique_code
 
-async def create_post_with_title(publisher_id: int, post_title: str, content_type: str, 
-                               content_text: str, content_file_id: str, channels: list) -> str:
-    import hashlib
-    import time
-    
-    # Генерация уникального кода
-    unique_code = hashlib.md5(f"{publisher_id}{time.time()}".encode()).hexdigest()[:10]
-    
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''INSERT INTO posts 
-            (publisher_id, post_title, content_type, content_text, content_file_id, channels, unique_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?)''', (
-            publisher_id, 
-            post_title,
-            content_type, 
-            content_text, 
-            content_file_id,
-            json.dumps(channels),
-            unique_code
-        ))
-        await db.commit()
-    
-    return unique_code
-
 async def get_post(unique_code: str):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM posts WHERE unique_code = ?", (unique_code,)) as cursor:
-            row = await cursor.fetchone()
-            return dict(row) if row else None
-
-async def get_post_by_id(post_id: int):
-    """Получить пост по ID"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM posts WHERE id = ?", (post_id,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -191,18 +132,6 @@ async def get_user_posts(user_id: int):
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
-
-async def update_post_content(post_id: int, content_type: str, content_text: str, 
-                            content_file_id: str, channels: list):
-    """Обновить содержимое поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''UPDATE posts 
-                           SET content_type = ?, content_text = ?, content_file_id = ?, 
-                               channels = ?, created_at = CURRENT_TIMESTAMP 
-                           WHERE id = ?''', 
-                        (content_type, content_text, content_file_id, 
-                         json.dumps(channels), post_id))
-        await db.commit()
 
 async def toggle_post_status(post_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -250,113 +179,6 @@ async def update_payment_status(payment_id: int, status: str):
             (status, payment_id)
         )
         await db.commit()
-
-# Функции для работы с обновлениями постов
-async def subscribe_to_post_updates(user_id: int, post_id: int) -> bool:
-    """Подписаться на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        try:
-            await db.execute('''INSERT OR REPLACE INTO post_updates (post_id, user_id, subscribed) 
-                               VALUES (?, ?, 1)''', 
-                           (post_id, user_id))
-            await db.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при подписке на обновления: {e}")
-            return False
-
-async def unsubscribe_from_post_updates(user_id: int, post_id: int) -> bool:
-    """Отписаться от обновлений поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        try:
-            await db.execute('''UPDATE post_updates SET subscribed = 0 
-                               WHERE post_id = ? AND user_id = ?''', 
-                           (post_id, user_id))
-            await db.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при отписке от обновлений: {e}")
-            return False
-
-async def is_subscribed_to_updates(user_id: int, post_id: int) -> bool:
-    """Проверить, подписан ли пользователь на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute('''SELECT subscribed FROM post_updates 
-                                WHERE post_id = ? AND user_id = ? AND subscribed = 1''', 
-                            (post_id, user_id)) as cursor:
-            result = await cursor.fetchone()
-            return bool(result)
-
-async def get_post_subscribers(post_id: int) -> list:
-    """Получить список подписчиков на обновления поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute('''SELECT u.user_id, u.username, u.full_name 
-                                FROM post_updates pu
-                                JOIN users u ON pu.user_id = u.user_id
-                                WHERE pu.post_id = ? AND pu.subscribed = 1''', 
-                            (post_id,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-async def create_post_revision(post_id: int, content_type: str, content_text: str, 
-                              content_file_id: str, channels: list) -> int:
-    """Создать новую редакцию поста"""
-    # Получаем номер следующей редакции
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute('''SELECT MAX(revision_number) FROM post_revisions 
-                                WHERE post_id = ?''', (post_id,)) as cursor:
-            max_revision = await cursor.fetchone()
-            next_revision = (max_revision[0] or 0) + 1
-        
-        cursor = await db.execute('''INSERT INTO post_revisions 
-                                   (post_id, revision_number, content_type, content_text, 
-                                    content_file_id, channels, created_at)
-                                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''', 
-                                (post_id, next_revision, content_type, content_text,
-                                 content_file_id, json.dumps(channels)))
-        await db.commit()
-        return cursor.lastrowid
-
-async def get_post_revisions(post_id: int) -> list:
-    """Получить все редакции поста"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute('''SELECT * FROM post_revisions 
-                                WHERE post_id = ? 
-                                ORDER BY revision_number DESC''', (post_id,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-async def mark_revision_as_sent(revision_id: int):
-    """Отметить редакцию как отправленную"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''UPDATE post_revisions SET sent_at = CURRENT_TIMESTAMP 
-                           WHERE id = ?''', (revision_id,))
-        await db.commit()
-
-async def get_post_with_revisions(post_id: int):
-    """Получить пост со всеми редакциями"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        
-        # Получаем основной пост
-        async with db.execute('''SELECT * FROM posts WHERE id = ?''', (post_id,)) as cursor:
-            post = await cursor.fetchone()
-        
-        if not post:
-            return None
-        
-        # Получаем редакции
-        async with db.execute('''SELECT * FROM post_revisions 
-                                WHERE post_id = ? 
-                                ORDER BY revision_number DESC''', (post_id,)) as cursor:
-            revisions = await cursor.fetchall()
-        
-        post_dict = dict(post)
-        post_dict['revisions'] = [dict(rev) for rev in revisions]
-        
-        return post_dict
 
 # Статистика
 async def get_stats():
